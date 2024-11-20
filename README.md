@@ -4,7 +4,8 @@
   <li>установить JDK <br> 
     sudo apt install openjdk</li><br>
 
-<li> далее нужно установить файл Shell.java в папку Desktop</li> 
+<li> далее нужно установить файл Shell.java <br>
+git clone  https://github.com/Torus211/ShellOnJava </li> 
 <li> После того как у  вас появился файл Shell.java его нужно скомпилировать с помощью команды <br>
 javac Shell.java <br>
 Если сделать все правильно появится файл Shell.class</li>
