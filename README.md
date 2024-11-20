@@ -1,4 +1,4 @@
-<title>ShellOnJava</title>
+# ShellOnJava
 для использования Shell нужно: <br>
 <ul>
   <li>установить JDK <br> 
