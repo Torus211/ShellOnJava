@@ -1,10 +1,16 @@
 import java.io.*;
 import java.util.*;
+import sun.misc.Signal;
 
 public class Shell {
     private static final List<String> history = new ArrayList<>();
 
     public static void main(String[] args) throws IOException {
+        // Обрабатываем сигнал SIGHUP
+        Signal.handle(new Signal("HUP"), signal -> {
+            System.out.println("Configuration reloaded");
+        });
+
         Scanner scanner = new Scanner(System.in);
         System.out.println("Добро пожаловать в Shell! Для выхода введите exit или \\q.");
         System.out.print("> ");
@@ -109,7 +115,8 @@ public class Shell {
             System.out.println("Устройство " + device + " не найдено.");
         }
     }
-// Подключение VFS для задач cron
+
+    // Подключение VFS для задач cron
     private static void handleCron() {
         File vfsFile = new File("/tmp/vfs");
         try (FileWriter writer = new FileWriter(vfsFile)) {
@@ -162,4 +169,3 @@ public class Shell {
         }
     }
 }
-
