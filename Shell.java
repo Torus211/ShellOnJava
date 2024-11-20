@@ -142,7 +142,7 @@ public class Shell {
             return;
         }
         String procId = parts[1];
-        File memFile = new File("/proc/" + procId + "/mem");
+        File memFile = new File("/proc/" + procId + "/map_files");
         if (memFile.exists()) {
             try (BufferedReader reader = new BufferedReader(new FileReader(memFile))) {
                 String line;
