@@ -12,9 +12,8 @@ sudo apt install -y openjdk-11-jdk
 echo "Проверка установленной версии Java..."
 java -version
 
-# Клонирование репозитория
-echo "Клонируем репозиторий..."
-git clone https://github.com/Torus211/ShellOnJava
+
+
 
 # Переход в директорию проекта
 cd ShellOnJava
