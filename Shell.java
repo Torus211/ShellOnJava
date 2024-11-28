@@ -6,10 +6,14 @@ public class Shell {
     private static final List<String> history = new ArrayList<>();
 
     public static void main(String[] args) throws IOException {
-        // Обрабатываем сигнал SIGHUP
-        Signal.handle(new Signal("HUP"), signal -> {
-            System.out.println("Configuration reloaded");
-        });
+        try {
+            // Обрабатываем сигнал SIGHUP
+            Signal.handle(new Signal("HUP"), signal -> {
+                System.out.println("Configuration reloaded");
+            });
+        } catch (Exception e) {
+            System.err.println("Сигнал SIGHUP не поддерживается на этой платформе.");
+        }
 
         Scanner scanner = new Scanner(System.in);
         System.out.println("Добро пожаловать в Shell! Для выхода введите exit или \\q.");
@@ -37,8 +41,8 @@ public class Shell {
                 handleEcho(input);
             } else if (input.startsWith("\\e ")) {
                 handleEnv(input);
-            } else if (input.startsWith("\\l ")) {
-                handleDiskInfo(input);
+            } else if (input.startsWith("\\install")) {
+                handleBootableCheck(input);
             } else if (input.startsWith("\\cron")) {
                 handleCron();
             } else if (input.startsWith("\\mem ")) {
@@ -96,23 +100,42 @@ public class Shell {
         }
     }
 
-    // Информация о разделах
-    private static void handleDiskInfo(String input) {
-        String device = input.substring(3).trim();
-        File devFile = new File(device);
-        if (devFile.exists()) {
-            try (BufferedReader reader = new BufferedReader(new FileReader("/proc/partitions"))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (line.contains(devFile.getName())) {
-                        System.out.println(line.trim());
-                    }
-                }
-            } catch (IOException e) {
-                System.err.println("Ошибка чтения информации о разделах: " + e.getMessage());
+    // Проверка, является ли диск установочным
+    private static void handleBootableCheck(String input) {
+        String diskPath = input.substring(9).trim();
+        File disk = new File(diskPath);
+
+        if (!disk.exists() || !disk.isDirectory()) {
+            System.out.println("Указанный путь не найден или это не директория: " + diskPath);
+            return;
+        }
+
+        // Проверяем на наличие загрузочных файлов
+        List<String> bootFiles = Arrays.asList("bootmgr", "grldr", "syslinux.cfg");
+        boolean isBootable = false;
+
+        for (String bootFile : bootFiles) {
+            File bootCheck = new File(disk, bootFile);
+            if (bootCheck.exists()) {
+                isBootable = true;
+                System.out.println("Найден загрузочный файл: " + bootCheck.getAbsolutePath());
             }
+        }
+
+        // Проверяем директории для Linux/EFI загрузчиков
+        List<String> bootDirs = Arrays.asList("boot", "efi", "syslinux");
+        for (String bootDir : bootDirs) {
+            File bootCheck = new File(disk, bootDir);
+            if (bootCheck.exists() && bootCheck.isDirectory()) {
+                isBootable = true;
+                System.out.println("Найдена загрузочная директория: " + bootCheck.getAbsolutePath());
+            }
+        }
+
+        if (isBootable) {
+            System.out.println("Диск " + diskPath + " является установочным.");
         } else {
-            System.out.println("Устройство " + device + " не найдено.");
+            System.out.println("Диск " + diskPath + " не является установочным.");
         }
     }
 
@@ -141,19 +164,33 @@ public class Shell {
             System.out.println("Использование: \\mem <procid>");
             return;
         }
-        String procId = parts[1];
-        File memFile = new File("/proc/" + procId + "/map_files");
-        if (memFile.exists()) {
-            try (BufferedReader reader = new BufferedReader(new FileReader(memFile))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    System.out.println(line);
-                }
-            } catch (IOException e) {
-                System.err.println("Ошибка чтения памяти процесса: " + e.getMessage());
+
+        int processId;
+        try {
+            processId = Integer.parseInt(parts[1]);
+        } catch (NumberFormatException e) {
+            System.err.println("Неверный формат PID: " + parts[1]);
+            return;
+        }
+
+        File memFile = new File("/proc/" + processId + "/mem");
+        if (!memFile.exists()) {
+            System.out.println("Процесс с PID " + processId + " не найден или не доступен.");
+            return;
+        }
+
+        File outputDump = new File("memory_dump_" + processId + ".bin");
+        try (FileInputStream fis = new FileInputStream(memFile);
+             FileOutputStream fos = new FileOutputStream(outputDump)) {
+
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+            while ((bytesRead = fis.read(buffer)) != -1) {
+                fos.write(buffer, 0, bytesRead);
             }
-        } else {
-            System.out.println("Процесс с ID " + procId + " не найден.");
+            System.out.println("Дамп памяти сохранён в файл: " + outputDump.getAbsolutePath());
+        } catch (IOException e) {
+            System.err.println("Ошибка при создании дампа памяти: " + e.getMessage());
         }
     }
 
@@ -161,8 +198,16 @@ public class Shell {
     private static void executeCommand(String command) {
         try {
             ProcessBuilder pb = new ProcessBuilder(command.split("\\s+"));
-            pb.inheritIO();
+            pb.redirectErrorStream(true);
             Process process = pb.start();
+
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    System.out.println(line);
+                }
+            }
+
             process.waitFor();
         } catch (IOException | InterruptedException e) {
             System.err.println("Ошибка выполнения команды: " + e.getMessage());
