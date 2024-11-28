@@ -96,23 +96,33 @@ public class Shell {
         }
     }
 
-    // Информация о разделах
-    private static void handleDiskInfo(String input) {
-        String device = input.substring(3).trim();
-        File devFile = new File(device);
-        if (devFile.exists()) {
-            try (BufferedReader reader = new BufferedReader(new FileReader("/proc/partitions"))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (line.contains(devFile.getName())) {
-                        System.out.println(line.trim());
-                    }
-                }
-            } catch (IOException e) {
-                System.err.println("Ошибка чтения информации о разделах: " + e.getMessage());
+     // Проверка, является ли файл или устройство загрузочным
+    private static void checkBootableFile(String command) {
+        String filePath = command.substring(3).trim();
+        File targetFile = new File(filePath);
+
+        if (!targetFile.exists()) {
+            System.out.println("Файл или устройство " + filePath + " не найдено.");
+            return;
+        }
+
+        try (RandomAccessFile fileReader = new RandomAccessFile(targetFile, "r")) {
+            byte[] sectorData = new byte[512];
+            int bytesRead = fileReader.read(sectorData);
+
+            if (bytesRead < 512) {
+                System.out.println("Ошибка: не удалось прочитать полный загрузочный сектор.");
+                return;
             }
-        } else {
-            System.out.println("Устройство " + device + " не найдено.");
+
+            int bootSignature = ((sectorData[510] & 0xFF) << 8) | (sectorData[511] & 0xFF);
+            if (bootSignature == 0xAA55) {
+                System.out.println("Файл или устройство " + filePath + " является загрузочным (сигнатура 0xAA55).");
+            } else {
+                System.out.println("Файл или устройство " + filePath + " не является загрузочным.");
+            }
+        } catch (IOException error) {
+            System.err.println("Ошибка чтения файла или устройства " + filePath + ": " + error.getMessage());
         }
     }
 
@@ -134,26 +144,30 @@ public class Shell {
         }
     }
 
-    // Дамп памяти процесса
-    private static void handleMemoryDump(String input) {
-        String[] parts = input.split("\\s+");
-        if (parts.length < 2) {
-            System.out.println("Использование: \\mem <procid>");
-            return;
-        }
-        String procId = parts[1];
-        File memFile = new File("/proc/" + procId + "/map_files");
-        if (memFile.exists()) {
-            try (BufferedReader reader = new BufferedReader(new FileReader(memFile))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    System.out.println(line);
-                }
-            } catch (IOException e) {
-                System.err.println("Ошибка чтения памяти процесса: " + e.getMessage());
+   // Генерация дампа памяти процесса
+    private static void generateMemoryDump(int processId, String dumpFilePath) throws IOException, InterruptedException {
+        String[] dumpCommand = {
+            "bash", "-c",
+            String.format(
+                "gdb --batch -p %d -ex 'gcore %s' -ex 'detach' -ex 'quit'",
+                processId, dumpFilePath
+            )
+        };
+
+        Process dumpProcess = Runtime.getRuntime().exec(dumpCommand);
+
+        try (BufferedReader dumpOutput = new BufferedReader(new InputStreamReader(dumpProcess.getInputStream()))) {
+            String outputLine;
+            while ((outputLine = dumpOutput.readLine()) != null) {
+                System.out.println(outputLine);
             }
+        }
+
+        int exitStatus = dumpProcess.waitFor();
+        if (exitStatus == 0) {
+            System.out.println("Дамп памяти успешно создан по пути: " + dumpFilePath);
         } else {
-            System.out.println("Процесс с ID " + procId + " не найден.");
+            System.err.println("Не удалось создать дамп памяти. Код завершения: " + exitStatus);
         }
     }
 
