@@ -1,9 +1,34 @@
 import java.io.*;
+import java.nio.ByteBuffer;
 import java.util.*;
 import sun.misc.Signal;
 
 public class Shell {
     private static final List<String> history = new ArrayList<>();
+
+    public static boolean isBootableDisk(String diskPath) {
+        // Открываем файл устройства
+        try (RandomAccessFile diskFile = new RandomAccessFile(diskPath, "r")) {
+            byte[] buffer = new byte[512]; // Размер одного сектора
+            int bytesRead = diskFile.read(buffer);
+            
+            // Проверяем, что удалось прочитать 512 байт
+            if (bytesRead != 512) {
+                System.out.println("Не удалось прочитать полный сектор.");
+                return false;
+            }
+
+            // Проверяем последние два байта на сигнатуру 0x55AA
+            ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
+            byte lastByte = byteBuffer.get(510);  // 510-й байт (0x55)
+            byte secondLastByte = byteBuffer.get(511); // 511-й байт (0xAA)
+
+            return lastByte == (byte) 0x55 && secondLastByte == (byte) 0xAA;
+        } catch (IOException e) {
+            System.err.println("Ошибка при чтении диска: " + e.getMessage());
+            return false;
+        }
+    }
 
     public static void main(String[] args) throws IOException {
         // Обрабатываем сигнал SIGHUP
@@ -38,7 +63,7 @@ public class Shell {
             } else if (input.startsWith("\\e ")) {
                 handleEnv(input);
             } else if (input.startsWith("\\l ")) {
-                handleDiskInfo(input);
+                handleDiskCheck(input);  // Замена команды \l на проверку загрузочного диска
             } else if (input.startsWith("\\cron")) {
                 handleCron();
             } else if (input.startsWith("\\mem ")) {
@@ -96,23 +121,13 @@ public class Shell {
         }
     }
 
-    // Информация о разделах
-    private static void handleDiskInfo(String input) {
-        String device = input.substring(3).trim();
-        File devFile = new File(device);
-        if (devFile.exists()) {
-            try (BufferedReader reader = new BufferedReader(new FileReader("/proc/partitions"))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (line.contains(devFile.getName())) {
-                        System.out.println(line.trim());
-                    }
-                }
-            } catch (IOException e) {
-                System.err.println("Ошибка чтения информации о разделах: " + e.getMessage());
-            }
+    // Проверка загрузочного диска
+    private static void handleDiskCheck(String input) {
+        String diskPath = input.substring(3).trim();  // Получаем путь к диску
+        if (isBootableDisk(diskPath)) {
+            System.out.println("Диск " + diskPath + " является загрузочным.");
         } else {
-            System.out.println("Устройство " + device + " не найдено.");
+            System.out.println("Диск " + diskPath + " не является загрузочным.");
         }
     }
 
@@ -172,6 +187,31 @@ public class Shell {
             process.waitFor();
         } catch (IOException | InterruptedException e) {
             System.err.println("Ошибка выполнения команды: " + e.getMessage());
+        }
+    }
+
+    // Проверка, является ли диск загрузочным
+    public static boolean isBootableDisk(String diskPath) {
+        // Открываем файл устройства
+        try (RandomAccessFile diskFile = new RandomAccessFile(diskPath, "r")) {
+            byte[] buffer = new byte[512]; // Размер одного сектора
+            int bytesRead = diskFile.read(buffer);
+            
+            // Проверяем, что удалось прочитать 512 байт
+            if (bytesRead != 512) {
+                System.out.println("Не удалось прочитать полный сектор.");
+                return false;
+            }
+
+            // Проверяем последние два байта на сигнатуру 0x55AA
+            ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
+            byte lastByte = byteBuffer.get(510);  // 510-й байт (0x55)
+            byte secondLastByte = byteBuffer.get(511); // 511-й байт (0xAA)
+
+            return lastByte == (byte) 0x55 && secondLastByte == (byte) 0xAA;
+        } catch (IOException e) {
+            System.err.println("Ошибка при чтении диска: " + e.getMessage());
+            return false;
         }
     }
 }
