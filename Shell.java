@@ -6,30 +6,6 @@ import sun.misc.Signal;
 public class Shell {
     private static final List<String> history = new ArrayList<>();
 
-    public static boolean isBootableDisk(String diskPath) {
-        // Открываем файл устройства
-        try (RandomAccessFile diskFile = new RandomAccessFile(diskPath, "r")) {
-            byte[] buffer = new byte[512]; // Размер одного сектора
-            int bytesRead = diskFile.read(buffer);
-            
-            // Проверяем, что удалось прочитать 512 байт
-            if (bytesRead != 512) {
-                System.out.println("Не удалось прочитать полный сектор.");
-                return false;
-            }
-
-            // Проверяем последние два байта на сигнатуру 0x55AA
-            ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
-            byte lastByte = byteBuffer.get(510);  // 510-й байт (0x55)
-            byte secondLastByte = byteBuffer.get(511); // 511-й байт (0xAA)
-
-            return lastByte == (byte) 0x55 && secondLastByte == (byte) 0xAA;
-        } catch (IOException e) {
-            System.err.println("Ошибка при чтении диска: " + e.getMessage());
-            return false;
-        }
-    }
-
     public static void main(String[] args) throws IOException {
         // Обрабатываем сигнал SIGHUP
         Signal.handle(new Signal("HUP"), signal -> {
@@ -131,6 +107,31 @@ public class Shell {
         }
     }
 
+    // Метод для проверки загрузочного диска
+    public static boolean isBootableDisk(String diskPath) {
+        // Открываем файл устройства
+        try (RandomAccessFile diskFile = new RandomAccessFile(diskPath, "r")) {
+            byte[] buffer = new byte[512]; // Размер одного сектора
+            int bytesRead = diskFile.read(buffer);
+            
+            // Проверяем, что удалось прочитать 512 байт
+            if (bytesRead != 512) {
+                System.out.println("Не удалось прочитать полный сектор.");
+                return false;
+            }
+
+            // Проверяем последние два байта на сигнатуру 0x55AA
+            ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
+            byte lastByte = byteBuffer.get(510);  // 510-й байт (0x55)
+            byte secondLastByte = byteBuffer.get(511); // 511-й байт (0xAA)
+
+            return lastByte == (byte) 0x55 && secondLastByte == (byte) 0xAA;
+        } catch (IOException e) {
+            System.err.println("Ошибка при чтении диска: " + e.getMessage());
+            return false;
+        }
+    }
+
     // Подключение VFS для задач cron
     private static void handleCron() {
         File vfsFile = new File("/tmp/vfs");
@@ -187,31 +188,6 @@ public class Shell {
             process.waitFor();
         } catch (IOException | InterruptedException e) {
             System.err.println("Ошибка выполнения команды: " + e.getMessage());
-        }
-    }
-
-    // Проверка, является ли диск загрузочным
-    public static boolean isBootableDisk(String diskPath) {
-        // Открываем файл устройства
-        try (RandomAccessFile diskFile = new RandomAccessFile(diskPath, "r")) {
-            byte[] buffer = new byte[512]; // Размер одного сектора
-            int bytesRead = diskFile.read(buffer);
-            
-            // Проверяем, что удалось прочитать 512 байт
-            if (bytesRead != 512) {
-                System.out.println("Не удалось прочитать полный сектор.");
-                return false;
-            }
-
-            // Проверяем последние два байта на сигнатуру 0x55AA
-            ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
-            byte lastByte = byteBuffer.get(510);  // 510-й байт (0x55)
-            byte secondLastByte = byteBuffer.get(511); // 511-й байт (0xAA)
-
-            return lastByte == (byte) 0x55 && secondLastByte == (byte) 0xAA;
-        } catch (IOException e) {
-            System.err.println("Ошибка при чтении диска: " + e.getMessage());
-            return false;
         }
     }
 }
