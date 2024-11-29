@@ -173,23 +173,27 @@ public class Shell {
             return;
         }
 
-        File memFile = new File("/proc/" + processId + "/mem");
-        if (!memFile.exists()) {
-            System.out.println("Процесс с PID " + processId + " не найден или не доступен.");
-            return;
-        }
+        File outputDump = new File("heapdump_" + processId + ".hprof");
+        try {
+            // Выполняем jcmd для создания дампа памяти
+            ProcessBuilder pb = new ProcessBuilder("jcmd", String.valueOf(processId), "GC.heap_dump", outputDump.getAbsolutePath());
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
 
-        File outputDump = new File("memory_dump_" + processId + ".bin");
-        try (FileInputStream fis = new FileInputStream(memFile);
-             FileOutputStream fos = new FileOutputStream(outputDump)) {
-
-            byte[] buffer = new byte[4096];
-            int bytesRead;
-            while ((bytesRead = fis.read(buffer)) != -1) {
-                fos.write(buffer, 0, bytesRead);
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    System.out.println(line);
+                }
             }
-            System.out.println("Дамп памяти сохранён в файл: " + outputDump.getAbsolutePath());
-        } catch (IOException e) {
+
+            process.waitFor();
+            if (process.exitValue() == 0) {
+                System.out.println("Дамп памяти сохранён в файл: " + outputDump.getAbsolutePath());
+            } else {
+                System.err.println("Ошибка при создании дампа памяти. Проверьте PID процесса.");
+            }
+        } catch (IOException | InterruptedException e) {
             System.err.println("Ошибка при создании дампа памяти: " + e.getMessage());
         }
     }
