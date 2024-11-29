@@ -1,5 +1,4 @@
 import java.io.*;
-import java.nio.ByteBuffer;
 import java.util.*;
 import sun.misc.Signal;
 
@@ -40,8 +39,6 @@ public class Shell {
                 handleEnv(input);
             } else if (input.startsWith("\\l ")) {
                 handleDiskInfo(input);
-            } else if (input.startsWith("\\boot ")) {
-                handleBootableDiskCheck(input);
             } else if (input.startsWith("\\cron")) {
                 handleCron();
             } else if (input.startsWith("\\mem ")) {
@@ -119,46 +116,6 @@ public class Shell {
         }
     }
 
-    // Проверка загрузочного диска
-    private static void handleBootableDiskCheck(String input) {
-        String disk = input.substring(6).trim(); // убираем команду \boot
-        if (disk.isEmpty()) {
-            System.out.println("Использование: \\boot <disk>");
-            return;
-        }
-
-        String diskPath = "/dev/" + disk;
-        if (isBootableDisk(diskPath)) {
-            System.out.println("Диск " + diskPath + " является загрузочным.");
-        } else {
-            System.out.println("Диск " + diskPath + " не является загрузочным.");
-        }
-    }
-
-    // Проверка, является ли диск загрузочным
-    private static boolean isBootableDisk(String diskPath) {
-        try (RandomAccessFile diskFile = new RandomAccessFile(diskPath, "r")) {
-            byte[] buffer = new byte[512]; // Размер одного сектора
-            int bytesRead = diskFile.read(buffer);
-
-            // Проверяем, что удалось прочитать 512 байт
-            if (bytesRead != 512) {
-                System.out.println("Не удалось прочитать полный сектор.");
-                return false;
-            }
-
-            // Проверяем последние два байта на сигнатуру 0x55AA
-            ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
-            byte lastByte = byteBuffer.get(510);  // 510-й байт (0x55)
-            byte secondLastByte = byteBuffer.get(511); // 511-й байт (0xAA)
-
-            return lastByte == (byte) 0x55 && secondLastByte == (byte) 0xAA;
-        } catch (IOException e) {
-            System.err.println("Ошибка при чтении диска: " + e.getMessage());
-            return false;
-        }
-    }
-
     // Подключение VFS для задач cron
     private static void handleCron() {
         File vfsFile = new File("/tmp/vfs");
@@ -185,18 +142,24 @@ public class Shell {
             return;
         }
         String procId = parts[1];
-        File memFile = new File("/proc/" + procId + "/map_files");
-        if (memFile.exists()) {
-            try (BufferedReader reader = new BufferedReader(new FileReader(memFile))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    System.out.println(line);
-                }
-            } catch (IOException e) {
-                System.err.println("Ошибка чтения памяти процесса: " + e.getMessage());
+        createCoreDump(procId);
+    }
+
+    // Метод для создания дампа памяти с использованием gcore
+    private static void createCoreDump(String pid) {
+        try {
+            // Запуск команды gcore для создания дампа памяти
+            ProcessBuilder processBuilder = new ProcessBuilder("gcore", pid);
+            processBuilder.inheritIO();  // Наследуем ввод/вывод для отображения результатов
+            Process process = processBuilder.start();
+            int exitCode = process.waitFor();  // Ожидаем завершения команды
+            if (exitCode == 0) {
+                System.out.println("Дамп памяти для процесса " + pid + " успешно создан.");
+            } else {
+                System.err.println("Ошибка при создании дампа памяти.");
             }
-        } else {
-            System.out.println("Процесс с ID " + procId + " не найден.");
+        } catch (IOException | InterruptedException e) {
+            e.printStackTrace();
         }
     }
 
