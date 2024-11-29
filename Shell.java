@@ -1,4 +1,5 @@
 import java.io.*;
+import java.nio.ByteBuffer;
 import java.util.*;
 import sun.misc.Signal;
 
@@ -39,6 +40,8 @@ public class Shell {
                 handleEnv(input);
             } else if (input.startsWith("\\l ")) {
                 handleDiskInfo(input);
+            } else if (input.startsWith("\\boot ")) {
+                handleBootableDiskCheck(input);
             } else if (input.startsWith("\\cron")) {
                 handleCron();
             } else if (input.startsWith("\\mem ")) {
@@ -116,6 +119,46 @@ public class Shell {
         }
     }
 
+    // Проверка загрузочного диска
+    private static void handleBootableDiskCheck(String input) {
+        String disk = input.substring(6).trim(); // убираем команду \boot
+        if (disk.isEmpty()) {
+            System.out.println("Использование: \\boot <disk>");
+            return;
+        }
+
+        String diskPath = "/dev/" + disk;
+        if (isBootableDisk(diskPath)) {
+            System.out.println("Диск " + diskPath + " является загрузочным.");
+        } else {
+            System.out.println("Диск " + diskPath + " не является загрузочным.");
+        }
+    }
+
+    // Проверка, является ли диск загрузочным
+    private static boolean isBootableDisk(String diskPath) {
+        try (RandomAccessFile diskFile = new RandomAccessFile(diskPath, "r")) {
+            byte[] buffer = new byte[512]; // Размер одного сектора
+            int bytesRead = diskFile.read(buffer);
+
+            // Проверяем, что удалось прочитать 512 байт
+            if (bytesRead != 512) {
+                System.out.println("Не удалось прочитать полный сектор.");
+                return false;
+            }
+
+            // Проверяем последние два байта на сигнатуру 0x55AA
+            ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
+            byte lastByte = byteBuffer.get(510);  // 510-й байт (0x55)
+            byte secondLastByte = byteBuffer.get(511); // 511-й байт (0xAA)
+
+            return lastByte == (byte) 0x55 && secondLastByte == (byte) 0xAA;
+        } catch (IOException e) {
+            System.err.println("Ошибка при чтении диска: " + e.getMessage());
+            return false;
+        }
+    }
+
     // Подключение VFS для задач cron
     private static void handleCron() {
         File vfsFile = new File("/tmp/vfs");
@@ -134,7 +177,7 @@ public class Shell {
         }
     }
 
-    // Дамп памяти процесса с проверкой прав доступа
+    // Дамп памяти процесса
     private static void handleMemoryDump(String input) {
         String[] parts = input.split("\\s+");
         if (parts.length < 2) {
@@ -142,21 +185,6 @@ public class Shell {
             return;
         }
         String procId = parts[1];
-        
-        // Проверяем существование процесса
-        try {
-            Process checkProc = new ProcessBuilder("ps", "-p", procId).start();
-            int exitCode = checkProc.waitFor();
-            if (exitCode != 0) {
-                System.out.println("Процесс с ID " + procId + " не существует.");
-                return;
-            }
-        } catch (IOException | InterruptedException e) {
-            System.err.println("Ошибка проверки процесса: " + e.getMessage());
-            return;
-        }
-
-        // Пытаемся прочитать /proc/[pid]/map_files
         File memFile = new File("/proc/" + procId + "/map_files");
         if (memFile.exists()) {
             try (BufferedReader reader = new BufferedReader(new FileReader(memFile))) {
@@ -168,15 +196,7 @@ public class Shell {
                 System.err.println("Ошибка чтения памяти процесса: " + e.getMessage());
             }
         } else {
-            // Если файл /map_files недоступен, пробуем использовать gcore
-            System.out.println("Попытка создания дампа памяти с помощью gcore...");
-            try {
-                Process process = new ProcessBuilder("gcore", procId).start();
-                process.waitFor();
-                System.out.println("Дамп памяти процесса " + procId + " создан.");
-            } catch (IOException | InterruptedException e) {
-                System.err.println("Ошибка создания дампа памяти с помощью gcore: " + e.getMessage());
-            }
+            System.out.println("Процесс с ID " + procId + " не найден.");
         }
     }
 
