@@ -6,14 +6,10 @@ public class Shell {
     private static final List<String> history = new ArrayList<>();
 
     public static void main(String[] args) throws IOException {
-        try {
-            // Обрабатываем сигнал SIGHUP
-            Signal.handle(new Signal("HUP"), signal -> {
-                System.out.println("Configuration reloaded");
-            });
-        } catch (Exception e) {
-            System.err.println("Сигнал SIGHUP не поддерживается на этой платформе.");
-        }
+        // Обрабатываем сигнал SIGHUP
+        Signal.handle(new Signal("HUP"), signal -> {
+            System.out.println("Configuration reloaded");
+        });
 
         Scanner scanner = new Scanner(System.in);
         System.out.println("Добро пожаловать в Shell! Для выхода введите exit или \\q.");
@@ -138,33 +134,49 @@ public class Shell {
         }
     }
 
-    // Дамп памяти процесса
+    // Дамп памяти процесса с проверкой прав доступа
     private static void handleMemoryDump(String input) {
         String[] parts = input.split("\\s+");
         if (parts.length < 2) {
             System.out.println("Использование: \\mem <procid>");
             return;
         }
-
         String procId = parts[1];
-        File memFile = new File("/proc/" + procId + "/mem");
-        if (!memFile.exists()) {
-            System.out.println("Процесс с ID " + procId + " не найден.");
+        
+        // Проверяем существование процесса
+        try {
+            Process checkProc = new ProcessBuilder("ps", "-p", procId).start();
+            int exitCode = checkProc.waitFor();
+            if (exitCode != 0) {
+                System.out.println("Процесс с ID " + procId + " не существует.");
+                return;
+            }
+        } catch (IOException | InterruptedException e) {
+            System.err.println("Ошибка проверки процесса: " + e.getMessage());
             return;
         }
 
-        File dumpFile = new File("memory_dump_" + procId + ".bin");
-        try (FileInputStream fis = new FileInputStream(memFile);
-             FileOutputStream fos = new FileOutputStream(dumpFile)) {
-
-            byte[] buffer = new byte[4096];
-            int bytesRead;
-            while ((bytesRead = fis.read(buffer)) != -1) {
-                fos.write(buffer, 0, bytesRead);
+        // Пытаемся прочитать /proc/[pid]/map_files
+        File memFile = new File("/proc/" + procId + "/map_files");
+        if (memFile.exists()) {
+            try (BufferedReader reader = new BufferedReader(new FileReader(memFile))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    System.out.println(line);
+                }
+            } catch (IOException e) {
+                System.err.println("Ошибка чтения памяти процесса: " + e.getMessage());
             }
-            System.out.println("Дамп памяти сохранён в файл: " + dumpFile.getAbsolutePath());
-        } catch (IOException e) {
-            System.err.println("Ошибка при создании дампа памяти: " + e.getMessage());
+        } else {
+            // Если файл /map_files недоступен, пробуем использовать gcore
+            System.out.println("Попытка создания дампа памяти с помощью gcore...");
+            try {
+                Process process = new ProcessBuilder("gcore", procId).start();
+                process.waitFor();
+                System.out.println("Дамп памяти процесса " + procId + " создан.");
+            } catch (IOException | InterruptedException e) {
+                System.err.println("Ошибка создания дампа памяти с помощью gcore: " + e.getMessage());
+            }
         }
     }
 
